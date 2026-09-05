@@ -1178,7 +1178,9 @@ void drawScene(SceneNode* root) {
     Mat4 rotX = Mat4::rotateX(-pitchRad);
     Mat4 rotY = Mat4::rotateY(-yawRad);
     Mat4 trans = Mat4::translate(-g_cameraPosition[0], -g_cameraPosition[1], -g_cameraPosition[2]);
-    Mat4 view = trans * rotY * rotX;
+    
+    // FIX: Standard first-person camera view matrix.
+    Mat4 view = rotX * rotY * trans; 
     Mat4 vp = proj * view;
 
     Frustum frustum;
