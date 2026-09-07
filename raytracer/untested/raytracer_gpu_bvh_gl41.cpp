@@ -62,7 +62,7 @@ static constexpr int WINDOW_HEIGHT = 540;
 static constexpr int RENDER_WIDTH  = 480;
 static constexpr int RENDER_HEIGHT = 270;
 
-static constexpr double TARGET_FPS = 30.0;
+static constexpr double TARGET_FPS = 20.0;
 static constexpr double TARGET_FRAME_TIME = 1.0 / TARGET_FPS;
 
 static constexpr float FOVEA_RADIUS = 0.24f;
@@ -1081,7 +1081,11 @@ static void renderFrame()
     glBindTexture(GL_TEXTURE_2D,bvhTexture);
 
     setRayUniforms(writeAccum);
+    
+    // FIX: Bind the VAO before drawing in Core Profile
+    glBindVertexArray(displayVAO);
     glDrawArrays(GL_TRIANGLES,0,3);
+    glBindVertexArray(0);
 
     glBindTexture(GL_TEXTURE_2D,0);
     readAccum=writeAccum;

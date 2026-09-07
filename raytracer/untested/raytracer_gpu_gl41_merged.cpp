@@ -62,7 +62,7 @@ static constexpr int WINDOW_HEIGHT = 540;
 static constexpr int RENDER_WIDTH  = 480;
 static constexpr int RENDER_HEIGHT = 270;
 
-static constexpr double TARGET_FPS = 30.0;
+static constexpr double TARGET_FPS = 20.0;
 static constexpr double TARGET_FRAME_TIME = 1.0 / TARGET_FPS;
 
 static constexpr float FOVEA_RADIUS = 0.24f;
@@ -574,15 +574,7 @@ vec3 tracePath(vec3 ro,vec3 rd,inout uint state)
             // and keeps reflections visible at low sample counts.
             float F=fresnelSchlick(rd,h.normal,h.ior);
             vec3 reflDir=normalize(reflectDir(rd,h.normal));
-
-            // Perceptual glass cheat carried over from the CPU version:
-            // keep a stable environment reflection even while the camera
-            // is moving or the accumulation buffer has very few samples.
-            // A small scene reflection is added only as a subtle detail.
-            vec3 refl=sky(reflDir)*1.12;
-            Hit reflHit;
-            if(intersectScene(h.position+h.normal*EPS,reflDir,reflHit) && reflHit.transmission<=0.5)
-                refl=mix(refl,reflHit.albedo*0.35+directLight(reflHit)*0.65,0.35);
+            vec3 refl=traceReflection(h.position+h.normal*EPS,reflDir);
 
             vec3 refrDir;
             vec3 refr=sky(rd);
@@ -1089,9 +1081,12 @@ static void renderFrame()
     glBindTexture(GL_TEXTURE_2D,bvhTexture);
 
     setRayUniforms(writeAccum);
-    glDrawArrays(GL_TRIANGLES,0,3);
+        glBindVertexArray(displayVAO);
 
-    glBindTexture(GL_TEXTURE_2D,0);
+
+    glDrawArrays(GL_TRIANGLES,0,3);
+    glBindVertexArray(0);
+        glBindTexture(GL_TEXTURE_2D,0);
     readAccum=writeAccum;
     accumulationReset=false;
     frameIndex++;
