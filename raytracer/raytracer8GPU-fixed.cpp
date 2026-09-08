@@ -74,6 +74,11 @@ static constexpr int MAX_BOUNCES    = 4;
 static constexpr float ANIMATION_SPEED = 0.9f;
 static constexpr float ANIMATION_RADIUS_X = 0.65f;
 static constexpr float ANIMATION_RADIUS_Z = 0.38f;
+static constexpr float ANIMATION_REFRESH_PAD = 2.4f;
+// Full accumulation refresh while animation is running. This prevents
+// temporal ghosting from moving objects at the cost of restarting the
+// progressive accumulation periodically. Set to 0.5f for a refresh every half second.
+static constexpr float ANIMATION_FULL_REFRESH_INTERVAL = 0.5f;
 static constexpr float PI           = 3.14159265358979323846f;
 static constexpr float EPSILON      = 0.001f;
 
@@ -301,6 +306,8 @@ static GLuint accumFBO=0;
 static GLuint displayVAO=0;
 static int readAccum=0;
 static int frameIndex=0;
+static float previousAnimationTime=0.0f;
+static double lastAnimationFullRefresh=0.0;
 static bool accumulationReset=true;
 
 // ============================================================
@@ -352,7 +359,9 @@ uniform int uMaxBounces;
 uniform vec3 uLightPosition;
 uniform vec3 uLightColor;
 uniform float uTime;
+uniform float uPrevTime;
 uniform int uAnimatedSphereIndex;
+uniform float uAnimationRefreshPad;
 
 const float PI=3.14159265358979323846;
 const float EPS=0.001;
@@ -682,19 +691,26 @@ vec3 tracePath(vec3 ro,vec3 rd,inout uint state)
 
         radiance+=throughput*(directLight(h)+h.albedo*0.025);
 
-        float specWeight=0.12*(1.0-h.roughness);
-        if(rand(state)<specWeight)
-        {
-            rd=normalize(reflectDir(rd,h.normal));
-            ro=h.position+h.normal*EPS;
-            throughput*=0.55;
-        }
-        else
-        {
-            rd=cosineHemisphere(h.normal,state);
-            ro=h.position+h.normal*EPS;
-            throughput*=h.albedo;
-        }
+        // Deterministic glossy reflection: don't randomly choose whether a
+        // sample reflects. That was a major source of stationary sparkle/noise.
+        // Trace one cheap reflection for every surface and send the remainder
+        // into the diffuse path. This converges much faster while preserving
+        // the reflective character of the original scene.
+        float specWeight=0.06+0.20*(1.0-h.roughness);
+        specWeight=clamp(specWeight,0.0,0.28);
+        vec3 reflDir=normalize(reflectDir(rd,h.normal));
+        vec3 glossy=sky(reflDir);
+        Hit glossyHit;
+        if(intersectScene(h.position+h.normal*EPS,reflDir,glossyHit) && glossyHit.transmission<=0.5)
+            glossy=mix(glossy,glossyHit.albedo*0.20+directLight(glossyHit)*0.80,0.45);
+        float fresnel=0.04+0.96*pow(1.0-max(dot(h.normal,-rd),0.0),5.0);
+        float glossyWeight=specWeight*fresnel;
+        radiance+=throughput*glossy*glossyWeight;
+
+        float diffuseWeight=max(0.0,1.0-glossyWeight);
+        throughput*=h.albedo*diffuseWeight;
+        rd=cosineHemisphere(h.normal,state);
+        ro=h.position+h.normal*EPS;
 
         if(bounce>=2)
         {
@@ -712,6 +728,57 @@ vec3 toneMap(vec3 c)
     c*=1.15;
     c=c/(1.0+c);
     return pow(max(c,vec3(0.0)),vec3(1.0/2.2));
+}
+
+vec2 animatedSphereScreenCenter(float t, out float projectedRadius)
+{
+    vec4 cr=sphereTexel(uAnimatedSphereIndex,0);
+    vec3 c=cr.xyz;
+    float r=cr.w;
+    float a=t*0.9;
+    c.x+=sin(a)*0.65;
+    c.z+=cos(a*0.82)*0.38;
+
+    vec3 toCenter=c-uCameraPosition;
+    float depth=dot(toCenter,uForward);
+    if(depth<=0.05)
+    {
+        projectedRadius=10.0;
+        return vec2(0.0);
+    }
+
+    vec2 screenCenter=vec2(dot(toCenter,uRight),dot(toCenter,uUp));
+    screenCenter/=max(depth*uTanFov,0.05);
+    screenCenter.x/=max(uAspect,0.001);
+
+    projectedRadius=r/max(depth*uTanFov,0.05);
+    projectedRadius/=max(uAspect,0.001);
+    return screenCenter;
+}
+
+bool pixelNeedsAnimationRefresh(vec2 centered)
+{
+    if(uAnimatedSphereIndex<0) return false;
+
+    // Refresh both the current and previous projected positions. This removes
+    // the stale-history trail left behind as the sphere moves.
+    float rNow=0.0;
+    float rPrev=0.0;
+    vec2 nowCenter=animatedSphereScreenCenter(uTime,rNow);
+    vec2 prevCenter=animatedSphereScreenCenter(uPrevTime,rPrev);
+
+    float pad=max(uAnimationRefreshPad,2.4);
+    float dNow=length(centered-nowCenter);
+    float dPrev=length(centered-prevCenter);
+
+    // Also cover the swept segment between the two positions.
+    vec2 motion=nowCenter-prevCenter;
+    float motionLen2=dot(motion,motion);
+    float segmentT=motionLen2>1e-8 ? clamp(dot(centered-prevCenter,motion)/motionLen2,0.0,1.0) : 0.0;
+    vec2 closest=prevCenter+motion*segmentT;
+    float sweptRadius=max(rNow,rPrev)*pad;
+
+    return dNow<rNow*pad || dPrev<rPrev*pad || length(centered-closest)<sweptRadius;
 }
 
 void main()
@@ -749,7 +816,14 @@ void main()
     vec4 old=texture(uPreviousAccum,uv);
     vec3 oldSum=old.rgb;
     float oldCount=old.a;
-    if(uReset!=0)
+
+    // Camera/reset events invalidate the whole image. Animation is different:
+    // keep history for stationary pixels, but locally refresh the region around
+    // the moving sphere so the rest of the scene can continue converging.
+    bool refreshPixel=(uReset!=0);
+    if(!refreshPixel && uTime>0.0)
+        refreshPixel=pixelNeedsAnimationRefresh(centered);
+    if(refreshPixel)
     {
         oldSum=vec3(0.0);
         oldCount=0.0;
@@ -802,7 +876,6 @@ static const char* displayFragmentShaderSource=R"GLSL(
 in vec2 vUV;
 out vec4 fragColor;
 uniform sampler2D uAccum;
-
 void main()
 {
     // The accumulation texture uses the same top-to-bottom convention
@@ -1152,8 +1225,11 @@ static void setRayUniforms(int writeIndex)
     glUniform1i(loc("uMaxBounces"),MAX_BOUNCES);
     glUniform3f(loc("uLightPosition"),-3.0f,5.5f,-2.0f);
     glUniform3f(loc("uLightColor"),7.0f,7.0f,7.0f);
-    glUniform1f(loc("uTime"),animationEnabled?(float)glfwGetTime()*ANIMATION_SPEED:0.0f);
+    float currentAnimationTime=animationEnabled?(float)glfwGetTime()*ANIMATION_SPEED:0.0f;
+    glUniform1f(loc("uTime"),currentAnimationTime);
+    glUniform1f(loc("uPrevTime"),previousAnimationTime);
     glUniform1i(loc("uAnimatedSphereIndex"),animatedSphereTextureIndex);
+    glUniform1f(loc("uAnimationRefreshPad"),ANIMATION_REFRESH_PAD);
 
     (void)writeIndex;
 }
@@ -1183,6 +1259,8 @@ static void renderFrame()
     glBindTexture(GL_TEXTURE_2D,0);
     readAccum=writeAccum;
     accumulationReset=false;
+    if(animationEnabled) previousAnimationTime=(float)glfwGetTime()*ANIMATION_SPEED;
+    else previousAnimationTime=0.0f;
     frameIndex++;
     glBindFramebuffer(GL_FRAMEBUFFER,0);
 }
@@ -1390,6 +1468,8 @@ int main()
         "GPU BVH traversal enabled through scene textures.\n"
         "Deterministic clear-glass reflection/refraction enabled.\n"
         "Animated sphere enabled (T toggles).\n"
+        "Local animated-region refresh keeps stationary pixels converging.\n"
+        "Deterministic glossy reflections reduce stationary noise.\n"
         "Foveated + temporal peripheral sampling enabled.\n"
         "==================================================\n\n",
         RENDER_WIDTH,RENDER_HEIGHT,
@@ -1439,16 +1519,24 @@ int main()
         {
             animationEnabled=!animationEnabled;
             clearAccumulation();
+            lastAnimationFullRefresh=glfwGetTime();
             std::printf("Animation %s.\n",animationEnabled?"enabled":"paused");
         }
         previousT=tDown;
 
-        // The animated sphere changes the scene every frame, so old samples
-        // belong to a different scene state. Reset the accumulation while it
-        // is running; the burst sampler then gives each frame a fresh, clean
-        // high-quality update even with the camera completely stationary.
-        if(animationEnabled)
-            clearAccumulation();
+        // Periodically refresh the entire accumulation while animation is running.
+        // This is deliberately much less aggressive than clearing every frame:
+        // the scene gets time to converge, then we throw away stale temporal
+        // history before it can stretch moving objects into ghost/zucchini shapes.
+        if(animationEnabled && ANIMATION_FULL_REFRESH_INTERVAL>0.0f)
+        {
+            double now=glfwGetTime();
+            if(now-lastAnimationFullRefresh >= ANIMATION_FULL_REFRESH_INTERVAL)
+            {
+                clearAccumulation();
+                lastAnimationFullRefresh=now;
+            }
+        }
 
         if(glfwGetKey(window,GLFW_KEY_ESCAPE)==GLFW_PRESS)
             glfwSetWindowShouldClose(window,GL_TRUE);
