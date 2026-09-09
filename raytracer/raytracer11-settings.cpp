@@ -84,8 +84,8 @@ static constexpr float FOG_COLOR_B = 0.72f;
 static constexpr int GODRAY_STEPS = 5;
 static constexpr float GODRAY_G = 0.62f;
 static constexpr float GODRAY_STRENGTH = 1.35f;
-static constexpr float GODRAY_MAX_DISTANCE = 18.0f;
-static constexpr float ANIMATION_REFRESH_MIN_CONTRIBUTION = 0.055f;
+static constexpr float GODRAY_MAX_DISTANCE = 28.0f;
+static constexpr float ANIMATION_REFRESH_MIN_CONTRIBUTION = 01.055f;
 // Full accumulation refresh while animation is running. This prevents
 // temporal ghosting from moving objects at the cost of restarting the
 // progressive accumulation periodically. Set to 0.5f for a refresh every half second.
