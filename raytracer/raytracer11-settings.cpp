@@ -65,17 +65,17 @@ static constexpr int RENDER_HEIGHT = 270;
 static constexpr double TARGET_FPS = 30.0;
 static constexpr double TARGET_FRAME_TIME = 1.0 / TARGET_FPS;
 
-static constexpr float FOVEA_RADIUS = 0.34f;
+static constexpr float FOVEA_RADIUS = 0.54f;
 static constexpr float MID_RADIUS   = 0.62f;
 static constexpr int FOVEA_SPP      = 2;
-static constexpr int BURST_FOVEA_SPP = 8;
+static constexpr int BURST_FOVEA_SPP = 5;
 static constexpr int BURST_MID_SPP   = 3;
 static constexpr int MAX_BOUNCES    = 3;
 static constexpr float ANIMATION_SPEED = 0.9f;
 static constexpr float ANIMATION_RADIUS_X = 0.65f;
 static constexpr float ANIMATION_RADIUS_Z = 0.38f;
 static constexpr float ANIMATION_REFRESH_PAD = 2.4f;
-static constexpr float FOG_DENSITY = 0.1058f;
+static constexpr float FOG_DENSITY = 0.058f;
 static constexpr float FOG_HEIGHT = 1.8f;
 static constexpr float FOG_SCATTER = 0.70f;
 static constexpr float FOG_COLOR_R = 0.56f;
@@ -84,7 +84,7 @@ static constexpr float FOG_COLOR_B = 0.72f;
 static constexpr int GODRAY_STEPS = 5;
 static constexpr float GODRAY_G = 0.62f;
 static constexpr float GODRAY_STRENGTH = 1.35f;
-static constexpr float GODRAY_MAX_DISTANCE = 28.0f;
+static constexpr float GODRAY_MAX_DISTANCE = 18.0f;
 static constexpr float ANIMATION_REFRESH_MIN_CONTRIBUTION = 01.055f;
 // Full accumulation refresh while animation is running. This prevents
 // temporal ghosting from moving objects at the cost of restarting the
