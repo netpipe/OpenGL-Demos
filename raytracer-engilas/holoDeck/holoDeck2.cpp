@@ -772,7 +772,7 @@ int main() {
         if (cursorCaptured) {
             double mx, my; glfwGetCursorPos(window, &mx, &my);
             if (firstMouse) { lastX = mx; lastY = my; firstMouse = false; }
-            yaw += (mx - lastX) * 0.002f; pitch += (lastY - my) * 0.002f;
+            yaw -= (mx - lastX) * 0.002f; pitch += (lastY - my) * 0.002f;
             if (pitch > 1.5f) pitch = 1.5f; if (pitch < -1.5f) pitch = -1.5f;
             lastX = mx; lastY = my;
         }
