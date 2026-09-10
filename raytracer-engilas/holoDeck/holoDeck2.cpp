@@ -785,8 +785,8 @@ int main() {
         float speed = 10.0f * deltaTime;
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camPos += forward * speed;
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camPos -= forward * speed;
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camPos -= right * speed;
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camPos += right * speed;
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camPos -= right * speed;
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camPos += right * speed;
         if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) camPos += up * speed;
         if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) camPos -= up * speed;
 
