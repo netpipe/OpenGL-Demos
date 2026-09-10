@@ -908,67 +908,71 @@ public:
 // 8. SHADERS (UPDATED FOR BUMP MAPPING)
 // ==========================================
 const char* gBufferVertexSource = R"(
-
     #version 330 core
-
+ 
     layout (location = 0) in vec3 aPos;
     layout (location = 1) in vec3 aNormal;
     layout (location = 2) in vec2 aTexCoord;
     layout (location = 3) in vec3 aTangent;
     layout (location = 4) in vec3 aBitangent;
-
+ 
     out vec3 vFragPos;
     out vec3 vNormal;
     out vec2 vTexCoord;
     out mat3 vTBN;
-
+    out vec3 vColor; // NEW: Pass instance color to fragment shader
+ 
     uniform mat4 uModel;
     uniform mat4 uView;
     uniform mat4 uProjection;
-
+ 
     uniform bool uIsInstanced;
-    uniform mat4 uInstanceMatrices[100];
-
+    uniform mat4 uInstanceMatrices[1000]; // FIX: Increased from 100 to 1000 to hold all grid instances
+    uniform vec3 uInstanceColors[1000];   // NEW: Added instance color array
+ 
     void main() {
-
         mat4 model = uModel;
-
-        if (uIsInstanced)
+        vec3 color = vec3(1.0);
+ 
+        if (uIsInstanced) {
             model = uInstanceMatrices[gl_InstanceID];
-
+            color = uInstanceColors[gl_InstanceID];
+        } else {
+            // For normal SceneNodes, C++ uploads the object color to index 0
+            color = uInstanceColors[0]; 
+        }
+ 
         vFragPos = vec3(model * vec4(aPos, 1.0));
-
         vTexCoord = aTexCoord;
-
+        vColor = color;
+ 
         mat3 normalMatrix = transpose(inverse(mat3(model)));
-
         vNormal = normalize(normalMatrix * aNormal);
-
+ 
         vec3 T = normalize(normalMatrix * aTangent);
         vec3 B = normalize(normalMatrix * aBitangent);
-
         vTBN = mat3(T, B, vNormal);
-
+ 
         gl_Position = uProjection * uView * vec4(vFragPos, 1.0);
     }
-
 )";
 
 const char* gBufferFragmentSource = R"(
     #version 330 core
     in vec3 vFragPos;
-    in vec3 vNormal;       // <-- ADDED BACK
+    in vec3 vNormal;       
     in vec2 vTexCoord;
     in mat3 vTBN;
-
+    in vec3 vColor; // NEW: Receive color from vertex shader
+ 
     layout (location = 0) out vec3 gPosition;
     layout (location = 1) out vec3 gNormal;
     layout (location = 2) out vec4 gAlbedo;
     layout (location = 3) out vec4 gSpecShin;
-
+ 
     uniform bool uIsLightMesh;
     uniform vec3 uLightColor;
-
+ 
     struct Material {
         vec3 ambient;
         vec3 diffuse;
@@ -981,7 +985,7 @@ const char* gBufferFragmentSource = R"(
     
     uniform sampler2D uNormalMap;
     uniform bool uHasNormalMap;
-
+ 
     void main() {
         gPosition = vFragPos;
         
@@ -991,22 +995,22 @@ const char* gBufferFragmentSource = R"(
             gSpecShin = vec4(0.0);
             return;
         }
-
+ 
         vec3 texColor = vec3(1.0);
         if (uHasTexture) {
             texColor = texture(uTexture, vTexCoord).rgb;
         }
         
-        gAlbedo = vec4(texColor * uMaterial.diffuse, 1.0);
+        // FIX: Multiply by vColor to properly shade instanced boxes and colored standard nodes
+        gAlbedo = vec4(texColor * uMaterial.diffuse * vColor, 1.0); 
         gSpecShin = vec4(uMaterial.specular, uMaterial.shininess / 255.0);
-
-        // Use normal map if available, otherwise fall back to smooth vertex normals
+ 
         if (uHasNormalMap) {
             vec3 normal = texture(uNormalMap, vTexCoord).rgb;
-            normal = normalize(normal * 2.0 - 1.0); // Unpack from [0,1] to [-1,1]
-            gNormal = normalize(vTBN * normal);     // Transform to world space
+            normal = normalize(normal * 2.0 - 1.0); 
+            gNormal = normalize(vTBN * normal);     
         } else {
-            gNormal = normalize(vNormal);           // <-- GRACEFUL FALLBACK
+            gNormal = normalize(vNormal);           
         }
     }
 )";
