@@ -391,8 +391,18 @@ public:
                 Vec2 deltaUV1 = v1.texcoord - v0.texcoord;
                 Vec2 deltaUV2 = v2.texcoord - v0.texcoord;
 
-                float f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
-                if (f != f) f = 1.0f; // Handle NaN / division by zero
+            //    float f = 1.0f / (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+          //      if (f != f) f = 1.0f; // Handle NaN / division by zero
+          
+          float denom =
+    deltaUV1.x * deltaUV2.y -
+    deltaUV2.x * deltaUV1.y;
+
+if (fabs(denom) < 0.000001f) {
+    continue;
+}
+
+float f = 1.0f / denom;
 
                 Vec3 tangent;
                 tangent.x = f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x);
@@ -1341,8 +1351,13 @@ void drawScene(SceneNode* root) {
     glUseProgram(g_activeShader);
 
     GLint loc;
-    loc = glGetUniformLocation(g_activeShader, "uView"); if(loc != -1) glUniformMatrix4fv(loc, 1, GL_FALSE, view.m);
-    loc = glGetUniformLocation(g_activeShader, "uProj"); if(loc != -1) glUniformMatrix4fv(loc, 1, GL_FALSE, proj.m);
+loc = glGetUniformLocation(g_activeShader, "uView");
+if (loc != -1)
+    glUniformMatrix4fv(loc, 1, GL_FALSE, view.m);
+
+loc = glGetUniformLocation(g_activeShader, "uProjection");
+if (loc != -1)
+    glUniformMatrix4fv(loc, 1, GL_FALSE, proj.m);
 
     int cullCount = 0, drawCount = 0;
     root->draw(frustum, cullCount, drawCount);
