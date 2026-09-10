@@ -8,4 +8,4 @@ should run on a raspberry pi zero with mali no problems<br>
 ![screenshot](ss.jpg)
 
 engilas renderer is MIT licence
-the rest of the code is Unlicence
+the rest of the code uses the "Unlicence" which is as permissive
