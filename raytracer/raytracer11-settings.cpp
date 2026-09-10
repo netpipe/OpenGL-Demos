@@ -1736,7 +1736,7 @@ int main()
         {
             double remaining=TARGET_FRAME_TIME-elapsed;
             if(remaining>0.002)
-                std::this_thread::sleep_for(std::chrono::duration<double>(remaining-0.001));
+                std::this_thread::sleep_for(std::chrono::duration<double>(remaining+0.01));
             while(glfwGetTime()-frameStart<TARGET_FRAME_TIME) {}
         }
     }
