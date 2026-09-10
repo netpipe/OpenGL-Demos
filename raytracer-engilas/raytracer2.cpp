@@ -283,7 +283,7 @@ struct hit_record { rt_material mat; vec3 normal; float bias_mult; float alpha; 
 #define LIGHT_POINT_SIZE 1
 #define AMBIENT_COLOR vec3(0.05, 0.05, 0.05)
 #define SHADOW_AMBIENT vec3(0.2, 0.2, 0.2)
-#define ITERATIONS 5
+#define ITERATIONS 4
 
 out vec4 FragColor;
 const float maxDist = 1000000.0;
@@ -591,7 +591,7 @@ int main() {
     boxes.push_back(create_box(0, -1.2, 6, 10, 0.2, 5, create_material(1, 0.6, 0, 100, 0.05, 0.0f, 1.0f)));
     boxes.push_back(create_box(8, 1, 6, 1, 1, 1, create_material(0.8, 0.7, 0, 50, 0.0, 0.0f, 1.0f)));
 
-    lights_point.push_back(create_point_light(3, 5, 0, 1, 1, 1, 25.5));
+    lights_point.push_back(create_point_light(3, 5, 0, 1, 1, 1, 2.5));
     lights_direct.push_back(create_direct_light(3, -1, 1, 1, 1, 1, 1.5));
 
     // Compile Shader
