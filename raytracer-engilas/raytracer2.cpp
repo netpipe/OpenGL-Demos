@@ -579,14 +579,14 @@ int main() {
     // Setup Scene
     scene.canvas_width = wind_width;
     scene.canvas_height = wind_height;
-    scene.reflect_depth = 5;
+    scene.reflect_depth = 4;
     scene.quat_camera_rotation[3] = 1.0f;
 
     spheres.push_back(create_sphere(2, 0, 6, 1, create_material(0, 0, 1, 50, 0.35, 0.0f, 1.0f)));
     spheres.push_back(create_sphere(-1, 0, 6, 1, create_material(1, 0, 0, 100, 0.1, 1.125f, 1.0f), true));
     spheres.push_back(create_sphere(0.5, 2, 6, 1, create_material(0.1, 1, 0.1, 200, 0.8, 0.0f, 0.2f)));
 
-  //  planes.push_back(create_plane(0, -1.0, 0, 0, 1, 0, create_material(0.55, 0.55, 0.6, 20, 0.08, 0.0f, 1.0f)));
+    planes.push_back(create_plane(0, -10.0, 0, 0, 1, 0, create_material(0.55, 0.55, 0.6, 20, 0.08, 0.0f, 1.0f)));
 
     boxes.push_back(create_box(0, -1.2, 6, 10, 0.2, 5, create_material(1, 0.6, 0, 100, 0.05, 0.0f, 1.0f)));
     boxes.push_back(create_box(8, 1, 6, 1, 1, 1, create_material(0.8, 0.7, 0, 50, 0.0, 0.0f, 1.0f)));
