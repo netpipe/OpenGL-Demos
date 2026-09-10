@@ -1,4 +1,4 @@
 # OpenGL-Demos RealTime Raytracer
 
 
-![screenshot](ss.jpg)
+![screenshot](ss.png)
