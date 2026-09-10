@@ -2,4 +2,4 @@
 
 has lots of features like culling and bumpmapped obj loader
 
-![screenshot](ss.jpg)
+![screenshot](ss.png)
