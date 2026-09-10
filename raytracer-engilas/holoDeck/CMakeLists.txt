@@ -4,7 +4,7 @@ project(raytracer LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(raytracer raytracer3-animate.cpp)
+add_executable(raytracer holodeck2.cpp)
 
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
