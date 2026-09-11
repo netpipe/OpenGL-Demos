@@ -751,7 +751,7 @@ float inShadow(vec3 ro, vec3 rd, float dist) {
     for(int i = 0; i < scene.sphere_count; i++) if(intersectSphere(ro, rd, spheres[i].obj, false, dist, t)) { shadow = 1; break; }
     if(shadow == 0) for(int i = 0; i < scene.box_count; i++) if(intersectBox(ro, rd, i, dist, t)) { shadow = 1; break; }
     if(shadow == 0) for(int i = 0; i < scene.plane_count; i++) if(intersectPlane(ro, rd, planes[i].pos, planes[i].normal, dist, t)) { shadow = 1; break; }
-    if(shadow == 0) for(int i = 0; i < scene.mesh_count; i++) if(intersectTriangle(ro, rd, i, dist, t, bar, normal)) { shadow = 1; break; }
+    //if(shadow == 0) for(int i = 0; i < scene.mesh_count; i++) if(intersectTriangle(ro, rd, i, dist, t, bar, normal)) { shadow = 1; break; }
     return shadow;
 }
 
