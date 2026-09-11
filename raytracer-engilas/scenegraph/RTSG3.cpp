@@ -823,12 +823,7 @@ hit_record get_hit_info(vec3 ro, vec3 rd, vec3 pt, float t, int num, int type, i
             1.0,                // kd
             1.0                 // ks
         );
-vec3 waterNormal = waters[num].normal;
-
-// Flip if reflections are on the wrong side
-waterNormal = -waterNormal;
-
-hr = hit_record(waterMat, waterNormal, 0, 1);
+        hr = hit_record(waterMat, -waters[num].normal, 0, 1);
         
         vec3 p = pt;
         float wave = sin(p.x * waters[num].waveFreq + scene.time * waters[num].flowSpeed) * 
