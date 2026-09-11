@@ -433,6 +433,7 @@ public:
     MeshNode(const std::string& objData) {
         model = new OBJModel();
         model->loadFromMemory(objData);
+       // model->load("capsule.obj");
     }
     ~MeshNode() { delete model; }
     
@@ -1039,7 +1040,7 @@ int main() {
 
     scene.canvas_width = wind_width;
     scene.canvas_height = wind_height;
-    scene.reflect_depth = 3;
+    scene.reflect_depth = 2;
     scene.quat_camera_rotation[3] = 1.0f;
 
     SceneNode* root = new SceneNode();
@@ -1112,9 +1113,9 @@ f 5/1/5 1/2/5 4/3/5 8/4/5
 f 2/1/6 6/2/6 7/3/6 3/4/6
 )";
     MeshNode* mesh1 = new MeshNode(cubeObj);
-    mesh1->setposition(0, 0, 6);
+    mesh1->setposition(8, 0, 6);
     mesh1->scale(1.5, 1.5, 1.5);
-    mesh1->cull_distance = 50.0f; // Example: If you move >50 units away, the cube is dropped from UBO
+    mesh1->cull_distance = 10.0f; // Example: If you move >50 units away, the cube is dropped from UBO
     root->addChild(mesh1);
 
     GLuint vs = compileShader(GL_VERTEX_SHADER, vertexShaderSrc);
@@ -1249,7 +1250,7 @@ f 2/1/6 6/2/6 7/3/6 3/4/6
         glBindVertexArray(0);
 
         glfwSwapBuffers(window);
-        usleep(60000);
+        usleep(50000);
         frames++;
         fpsTimer += deltaTime;
         if (fpsTimer >= 1.0) {
