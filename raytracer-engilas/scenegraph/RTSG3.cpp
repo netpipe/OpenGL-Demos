@@ -632,7 +632,7 @@ struct hit_record { rt_material mat; vec3 normal; float bias_mult; float alpha; 
 
 #define AMBIENT_COLOR vec3(0.05, 0.05, 0.05)
 #define SHADOW_AMBIENT vec3(0.2, 0.2, 0.2)
-#define ITERATIONS 4
+#define ITERATIONS 2
 
 out vec4 FragColor;
 const float maxDist = 10000.0;
@@ -1053,7 +1053,7 @@ int main() {
 
     WaterNode* water = new WaterNode();
     water->setposition(0, -2, 6);
-    water->scale(100, 1, 100);
+    water->scale(1, 1, 1);
     water->colorize(0.1, 0.3, 0.6);
     root->addChild(water);
 
@@ -1249,7 +1249,7 @@ f 2/1/6 6/2/6 7/3/6 3/4/6
         glBindVertexArray(0);
 
         glfwSwapBuffers(window);
-        usleep(80000);
+        usleep(60000);
         frames++;
         fpsTimer += deltaTime;
         if (fpsTimer >= 1.0) {
