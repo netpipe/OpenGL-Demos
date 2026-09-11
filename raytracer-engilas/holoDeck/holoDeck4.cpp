@@ -884,7 +884,7 @@ glBindFramebuffer(GL_FRAMEBUFFER, 0);
         if (cursorCaptured) {
             double mx, my; glfwGetCursorPos(window, &mx, &my);
             if (firstMouse) { lastX = mx; lastY = my; firstMouse = false; }
-            yaw += (mx - lastX) * 0.002f; pitch += (lastY - my) * 0.002f;
+            yaw -= (mx - lastX) * 0.002f; pitch += (lastY - my) * 0.002f;
             if (pitch > 1.5f) pitch = 1.5f; if (pitch < -1.5f) pitch = -1.5f;
             lastX = mx; lastY = my;
         }
@@ -897,8 +897,8 @@ glBindFramebuffer(GL_FRAMEBUFFER, 0);
         float speed = 10.0f * deltaTime;
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) camPos += forward * speed;
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) camPos -= forward * speed;
-        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camPos -= right * speed;
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camPos += right * speed;
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) camPos -= right * speed;
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) camPos += right * speed;
         if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) camPos += up * speed;
         if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) camPos -= up * speed;
 
@@ -1025,7 +1025,7 @@ glDepthMask(GL_TRUE);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
-        usleep(50000);
+        usleep(80000);
     }
 
     glfwDestroyWindow(window);
