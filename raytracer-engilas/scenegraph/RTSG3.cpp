@@ -823,6 +823,7 @@ hit_record get_hit_info(vec3 ro, vec3 rd, vec3 pt, float t, int num, int type, i
             1.0,                // kd
             1.0                 // ks
         );
+        //flip water normal to change its reflectivity for nighttime
         hr = hit_record(waterMat, -waters[num].normal, 0, 1);
         
         vec3 p = pt;
