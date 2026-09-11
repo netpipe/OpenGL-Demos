@@ -4,7 +4,7 @@ project(raytracer LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(raytracer RTSG.cpp)
+add_executable(raytracer RTSG3.cpp)
 
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
