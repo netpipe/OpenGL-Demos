@@ -823,7 +823,12 @@ hit_record get_hit_info(vec3 ro, vec3 rd, vec3 pt, float t, int num, int type, i
             1.0,                // kd
             1.0                 // ks
         );
-        hr = hit_record(waterMat, waters[num].normal, 0, 1);
+vec3 waterNormal = waters[num].normal;
+
+// Flip if reflections are on the wrong side
+waterNormal = -waterNormal;
+
+hr = hit_record(waterMat, waterNormal, 0, 1);
         
         vec3 p = pt;
         float wave = sin(p.x * waters[num].waveFreq + scene.time * waters[num].flowSpeed) * 
@@ -1113,9 +1118,9 @@ f 5/1/5 1/2/5 4/3/5 8/4/5
 f 2/1/6 6/2/6 7/3/6 3/4/6
 )";
     MeshNode* mesh1 = new MeshNode(cubeObj);
-    mesh1->setposition(8, 0, 6);
+    mesh1->setposition(0, 0, 6);
     mesh1->scale(1.5, 1.5, 1.5);
-    mesh1->cull_distance = 10.0f; // Example: If you move >50 units away, the cube is dropped from UBO
+    mesh1->cull_distance = 50.0f; // Example: If you move >50 units away, the cube is dropped from UBO
     root->addChild(mesh1);
 
     GLuint vs = compileShader(GL_VERTEX_SHADER, vertexShaderSrc);
