@@ -3,6 +3,7 @@ project(raytracer LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 
 add_executable(raytracer RTSG3.cpp)
 
@@ -11,7 +12,7 @@ find_package(GLEW REQUIRED)
 find_package(glfw3 CONFIG QUIET)
 if(NOT TARGET glfw AND NOT TARGET glfw3)
   find_package(glfw3 REQUIRED)
-endif()
+endif()set(CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES_BACKUP})
 
 target_link_libraries(raytracer PRIVATE OpenGL::GL GLEW::GLEW)
 if(TARGET glfw)
