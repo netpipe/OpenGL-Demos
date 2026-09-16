@@ -1,5 +1,5 @@
 # DragRacing
 
 
-![screenshot](ss.jpg)
+![screenshot](ss.png)
 
