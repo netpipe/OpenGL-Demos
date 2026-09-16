@@ -31,6 +31,7 @@
 #include <vector>
 #include <deque>
 #include <string>
+#include <unistd.h>
 
 // ------------------------------------------------------------------ constants
 static const float PI  = 3.14159265358979f;
@@ -1249,6 +1250,7 @@ int main() {
         }
         glfwSwapBuffers(win);
         glfwPollEvents();
+        usleep(30000);
     }
 
     clearMemories();
