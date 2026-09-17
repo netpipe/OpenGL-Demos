@@ -1,0 +1,5 @@
+install_name_tool -change "/Users/macbook2015/Desktop/brew/opt/glew/lib/libGLEW.2.3.dylib" "@executable_path/libGLEW.2.3.dylib" ./app
+
+install_name_tool -change "/Users/macbook2015/Desktop/brew/opt/glfw/lib/libglfw.3.dylib" "@executable_path/libglfw.3.dylib" ./app
+
+install_name_tool -change "/Users/macbook2015/Desktop/brew/opt/libpng/lib/libpng16.16.dylib" "@executable_path/libpng16.16.dylib" ./app
