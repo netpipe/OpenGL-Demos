@@ -1,0 +1,11 @@
+# Build and scratch output from the logo checkers.
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.ppm
+*.pgm
+*.png
+
+# ...except the one the changelog links to.
+!logo-before-after.png
