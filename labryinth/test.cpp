@@ -261,6 +261,7 @@ struct AppState
     int mazeH = 0;
 
     bool invert = false;
+    int sealRadius = -1;         // gap-bridging radius for sealOutsideMaze; -1 auto, 0 off
 
     float cellSize = 1.0f;       // horizontal world units per heightmap texel
     float heightScale = 5.0f;    // vertical world units for height 1.0
@@ -640,8 +641,11 @@ static bool loadPNGHeight(const std::string& filename, int& outW, int& outH, std
         for (int x = 0; x < width; ++x)
         {
             unsigned int r = 0, g = 0, b = 0, a = 255;
-            size_t off = static_cast<size_t>(y) * static_cast<size_t>(rowBytes)
-                       + static_cast<size_t>(x) * static_cast<size_t>(channels);
+
+            // rows[y] is already one row, so the offset is within that row.
+            // Adding y * rowBytes here read off the end of every row but the
+            // first, which is why loading a PNG produced garbage terrain.
+            size_t off = static_cast<size_t>(x) * static_cast<size_t>(channels);
 
             if (channels >= 3)
             {
@@ -840,76 +844,424 @@ static void makeCellWalkable(int x, int y)
     rebuildTerrainMesh();
 }
 
+// Walkable/blocked mask for the whole grid, in grid order.
+static std::vector<uint8_t> blockedMask()
+{
+    std::vector<uint8_t> blocked(static_cast<size_t>(app.mazeW) * static_cast<size_t>(app.mazeH), 1);
+
+    for (int y = 0; y < app.mazeH; ++y)
+    {
+        for (int x = 0; x < app.mazeW; ++x)
+            blocked[static_cast<size_t>(y) * static_cast<size_t>(app.mazeW) + static_cast<size_t>(x)] =
+                cellWalkable(x, y) ? 0 : 1;
+    }
+
+    return blocked;
+}
+
+// Chebyshev distance from every cell to the nearest blocked cell, two passes.
+static std::vector<int> distanceToBlocked(const std::vector<uint8_t>& blocked)
+{
+    const int W = app.mazeW;
+    const int H = app.mazeH;
+    const int BIG = 1 << 28;
+
+    std::vector<int> d(blocked.size(), BIG);
+    for (size_t i = 0; i < blocked.size(); ++i)
+        if (blocked[i])
+            d[i] = 0;
+
+    for (int y = 0; y < H; ++y)
+    {
+        for (int x = 0; x < W; ++x)
+        {
+            int i = y * W + x;
+            int v = d[i];
+            if (x > 0)              v = std::min(v, d[i - 1] + 1);
+            if (y > 0)              v = std::min(v, d[i - W] + 1);
+            if (y > 0 && x > 0)     v = std::min(v, d[i - W - 1] + 1);
+            if (y > 0 && x < W - 1) v = std::min(v, d[i - W + 1] + 1);
+            d[i] = v;
+        }
+    }
+
+    for (int y = H - 1; y >= 0; --y)
+    {
+        for (int x = W - 1; x >= 0; --x)
+        {
+            int i = y * W + x;
+            int v = d[i];
+            if (x < W - 1)                  v = std::min(v, d[i + 1] + 1);
+            if (y < H - 1)                  v = std::min(v, d[i + W] + 1);
+            if (y < H - 1 && x < W - 1)     v = std::min(v, d[i + W + 1] + 1);
+            if (y < H - 1 && x > 0)         v = std::min(v, d[i + W - 1] + 1);
+            d[i] = v;
+        }
+    }
+
+    return d;
+}
+
+// Cells the border reaches once gaps narrower than 2R are bridged. Flooding in
+// from the border through cells further than R from any wall cannot squeeze
+// through a corridor, then growing that region back by R restores the band the
+// bridging ate.
+static void sealExteriorMask(const std::vector<uint8_t>& blocked, const std::vector<int>& dist,
+                             int R, std::vector<uint8_t>& ext, std::vector<int>& scratch)
+{
+    const int W = app.mazeW;
+    const int H = app.mazeH;
+
+    std::fill(ext.begin(), ext.end(), static_cast<uint8_t>(0));
+    scratch.clear();
+
+    auto seed = [&](int i)
+    {
+        if (!ext[i] && !blocked[i] && dist[i] > R)
+        {
+            ext[i] = 1;
+            scratch.push_back(i);
+        }
+    };
+
+    for (int x = 0; x < W; ++x) { seed(x); seed((H - 1) * W + x); }
+    for (int y = 0; y < H; ++y) { seed(y * W); seed(y * W + W - 1); }
+
+    for (size_t k = 0; k < scratch.size(); ++k)
+    {
+        int i = scratch[k];
+        int x = i % W;
+        int y = i / W;
+        if (x > 0)      seed(i - 1);
+        if (x < W - 1)  seed(i + 1);
+        if (y > 0)      seed(i - W);
+        if (y < H - 1)  seed(i + W);
+    }
+
+    // Grow back by R, depth-limited so this stays one pass rather than R.
+    size_t coreEnd = scratch.size();
+    std::vector<int> depth(blocked.size(), 0);
+    for (size_t k = 0; k < coreEnd; ++k)
+        depth[scratch[k]] = 0;
+
+    for (size_t k = 0; k < scratch.size(); ++k)
+    {
+        int i = scratch[k];
+        if (depth[i] >= R)
+            continue;
+
+        int x = i % W;
+        int y = i / W;
+
+        auto grow = [&](int j)
+        {
+            if (blocked[j] || ext[j])
+                return;
+
+            ext[j] = 1;
+            depth[j] = depth[i] + 1;
+            scratch.push_back(j);
+        };
+
+        if (x > 0)      grow(i - 1);
+        if (x < W - 1)  grow(i + 1);
+        if (y > 0)      grow(i - W);
+        if (y < H - 1)  grow(i + W);
+    }
+}
+
+// R has to exceed half the widest corridor or the flood leaks inside and eats
+// the maze. Sweeping R shows a sharp step in surviving floor at exactly that
+// radius and a plateau above it, so the step is what picks R. Returns 0 when
+// no step stands out, meaning the image has no exterior worth sealing.
+static int chooseSealRadius(const std::vector<uint8_t>& blocked, const std::vector<int>& dist,
+                            size_t walkable)
+{
+    if (walkable == 0)
+        return 0;
+
+    const int limit = std::max(2, std::min(app.mazeW, app.mazeH) / 8);
+    // Floor of 32 cells, or 1% of walkable: large paper margins make the maze a
+    // small fraction of walkable, so walkable/20 used to reject real seals.
+    const long meaningful = static_cast<long>(std::max<size_t>(32, walkable / 100));
+
+    std::vector<uint8_t> ext(blocked.size());
+    std::vector<int> scratch;
+    scratch.reserve(blocked.size());
+
+    auto countPlayable = [&]() -> size_t
+    {
+        size_t sealed = 0;
+        for (size_t i = 0; i < ext.size(); ++i)
+            if (ext[i])
+                ++sealed;
+        return walkable - sealed;
+    };
+
+    // Prime with R=0 (no bridging). On a drawn maze the border flood fills the
+    // whole floor through the entrance (playable ~ 0); on a walled demo it
+    // seals nothing. Starting prevPlayable at 0 instead made R=1 look like a
+    // huge jump on the demo, which is why the old code skipped R=1 entirely and
+    // then could never pick the radius that thin-corridor mazes actually need.
+    sealExteriorMask(blocked, dist, 0, ext, scratch);
+    size_t prevPlayable = countPlayable();
+
+    int bestR = 0;
+    long bestJump = 0;
+    int settled = 0;
+
+    for (int R = 1; R <= limit; ++R)
+    {
+        sealExteriorMask(blocked, dist, R, ext, scratch);
+
+        size_t playable = countPlayable();
+        long jump = static_cast<long>(playable) - static_cast<long>(prevPlayable);
+
+        if (jump > bestJump)
+        {
+            bestJump = jump;
+            bestR = R;
+            settled = 0;
+        }
+        else if (bestR > 0 && jump < static_cast<long>(walkable / 100))
+        {
+            // Three quiet steps after the step means we are on the plateau.
+            if (++settled >= 3)
+                break;
+        }
+
+        prevPlayable = playable;
+    }
+
+    return (bestJump < meaningful) ? 0 : bestR;
+}
+
+// A maze drawing sits on a sheet of paper, and the paper around it loads as
+// open floor, so you can leave through the entrance and walk round the outside
+// instead of through the maze. The generated demo maze has no such margin: it
+// walls its own border.
+//
+// Flooding straight in from the image border does not separate paper from
+// corridor, because a labyrinth's entrance is a gap in its outer wall and the
+// flood pours through it and swallows the maze. Bridging gaps first does.
+static void sealOutsideMaze()
+{
+    if (app.mazeW <= 0 || app.mazeH <= 0 || app.height.empty())
+        return;
+
+    std::vector<uint8_t> blocked = blockedMask();
+
+    size_t walkable = 0;
+    for (size_t i = 0; i < blocked.size(); ++i)
+        if (!blocked[i])
+            ++walkable;
+
+    std::vector<int> dist = distanceToBlocked(blocked);
+
+    int R = (app.sealRadius >= 0) ? app.sealRadius
+                                  : chooseSealRadius(blocked, dist, walkable);
+
+    if (R <= 0)
+    {
+        std::cout << "Outside seal: off (no enclosing wall found to seal against).\n";
+        return;
+    }
+
+    std::vector<uint8_t> ext(blocked.size());
+    std::vector<int> scratch;
+    scratch.reserve(blocked.size());
+    sealExteriorMask(blocked, dist, R, ext, scratch);
+
+    const uint8_t wallValue = app.invert ? 0 : 255;
+
+    size_t sealed = 0;
+    for (size_t i = 0; i < ext.size(); ++i)
+    {
+        if (!ext[i])
+            continue;
+
+        app.height[i] = wallValue;
+        ++sealed;
+    }
+
+    std::cout << "Outside seal: radius " << R << ", walled " << sealed
+              << " of " << walkable << " open cells.\n";
+
+    uploadHeightTexture();
+}
+
+// Farthest walkable cell from `from` by path length, not by straight line: the
+// point of a maze is that those are different. Returns -1 if `from` is blocked.
+static int farthestByPath(const std::vector<uint8_t>& blocked, int from, std::vector<int>& dist)
+{
+    const int W = app.mazeW;
+    const int H = app.mazeH;
+
+    dist.assign(blocked.size(), -1);
+
+    if (from < 0 || blocked[from])
+        return -1;
+
+    std::vector<int> queue;
+    queue.reserve(blocked.size());
+    queue.push_back(from);
+    dist[from] = 0;
+
+    int far = from;
+
+    for (size_t k = 0; k < queue.size(); ++k)
+    {
+        int i = queue[k];
+        if (dist[i] > dist[far])
+            far = i;
+
+        int x = i % W;
+        int y = i / W;
+
+        auto visit = [&](int j)
+        {
+            if (blocked[j] || dist[j] >= 0)
+                return;
+
+            dist[j] = dist[i] + 1;
+            queue.push_back(j);
+        };
+
+        if (x > 0)      visit(i - 1);
+        if (x < W - 1)  visit(i + 1);
+        if (y > 0)      visit(i - W);
+        if (y < H - 1)  visit(i + W);
+    }
+
+    return far;
+}
+
+// Index of any cell in the largest 4-connected walkable component, or -1 if
+// none. After sealOutsideMaze, speck islands of paper debris can remain; the
+// first walkable cell in raster order may lie on one of those, so diameter
+// search must start inside the main maze.
+static int largestWalkableSeed(const std::vector<uint8_t>& blocked)
+{
+    const int W = app.mazeW;
+    const int H = app.mazeH;
+    const size_t N = blocked.size();
+
+    std::vector<uint8_t> seen(N, 0);
+    std::vector<int> queue;
+    queue.reserve(N);
+
+    int bestSeed = -1;
+    size_t bestSize = 0;
+
+    for (size_t i = 0; i < N; ++i)
+    {
+        if (blocked[i] || seen[i])
+            continue;
+
+        queue.clear();
+        queue.push_back(static_cast<int>(i));
+        seen[i] = 1;
+        size_t size = 0;
+
+        for (size_t k = 0; k < queue.size(); ++k)
+        {
+            int cur = queue[k];
+            ++size;
+
+            int x = cur % W;
+            int y = cur / W;
+
+            auto visit = [&](int j)
+            {
+                if (blocked[j] || seen[j])
+                    return;
+                seen[j] = 1;
+                queue.push_back(j);
+            };
+
+            if (x > 0)      visit(cur - 1);
+            if (x < W - 1)  visit(cur + 1);
+            if (y > 0)      visit(cur - W);
+            if (y < H - 1)  visit(cur + W);
+        }
+
+        if (size > bestSize)
+        {
+            bestSize = size;
+            bestSeed = static_cast<int>(i);
+        }
+    }
+
+    return bestSeed;
+}
+
+// Put the markers at the two ends of the longest path through the maze. The
+// old rule took the first walkable cell in raster order and then the one
+// farthest from it in a straight line, which on a drawn maze is the top-left
+// corner of the paper and the bottom-right corner of the paper: a diagonal
+// stroll that never enters the maze at all. Seeding from the largest walkable
+// component keeps that diameter search off leftover speck islands.
 static void findDefaultStartFinish()
 {
     app.hasStart = false;
     app.hasFinish = false;
 
-    // Find first walkable cell as start.
-    for (int y = 0; y < app.mazeH && !app.hasStart; ++y)
-    {
-        for (int x = 0; x < app.mazeW; ++x)
-        {
-            if (cellWalkable(x, y))
-            {
-                app.start = Vec2(static_cast<float>(x), static_cast<float>(y));
-                app.hasStart = true;
-                break;
-            }
-        }
-    }
+    std::vector<uint8_t> blocked = blockedMask();
 
-    if (!app.hasStart)
+    int seed = largestWalkableSeed(blocked);
+
+    if (seed < 0)
     {
         int cx = app.mazeW / 2;
         int cy = app.mazeH / 2;
         makeCellWalkable(cx, cy);
         app.start = Vec2(static_cast<float>(cx), static_cast<float>(cy));
         app.hasStart = true;
-    }
-
-    // Find walkable cell farthest from start as finish.
-    int bx = -1;
-    int by = -1;
-    float bestD = -1.0f;
-
-    for (int y = 0; y < app.mazeH; ++y)
-    {
-        for (int x = 0; x < app.mazeW; ++x)
-        {
-            if (!cellWalkable(x, y))
-                continue;
-
-            float dx = static_cast<float>(x) - app.start.x;
-            float dy = static_cast<float>(y) - app.start.y;
-            float d = dx * dx + dy * dy;
-
-            if (d > bestD)
-            {
-                bestD = d;
-                bx = x;
-                by = y;
-            }
-        }
-    }
-
-    if (bx >= 0 && by >= 0 && !(bx == static_cast<int>(app.start.x) && by == static_cast<int>(app.start.y)))
-    {
-        app.finish = Vec2(static_cast<float>(bx), static_cast<float>(by));
+        app.finish = app.start;
         app.hasFinish = true;
+        return;
     }
-    else
+
+    // Two sweeps: the farthest cell from anywhere is an end of the longest
+    // path, and the farthest cell from that is the other end.
+    std::vector<int> dist;
+    int a = farthestByPath(blocked, seed, dist);
+    int b = farthestByPath(blocked, a, dist);
+
+    if (b < 0 || b == a)
     {
-        int fx = (app.start.x < app.mazeW * 0.5f) ? (app.mazeW - 2) : 1;
-        int fy = (app.start.y < app.mazeH * 0.5f) ? (app.mazeH - 2) : 1;
-
-        fx = clampf(static_cast<float>(fx), 0.0f, static_cast<float>(app.mazeW - 1));
-        fy = clampf(static_cast<float>(fy), 0.0f, static_cast<float>(app.mazeH - 1));
-
-        makeCellWalkable(fx, fy);
-        app.finish = Vec2(static_cast<float>(fx), static_cast<float>(fy));
+        app.start = Vec2(static_cast<float>(a % app.mazeW), static_cast<float>(a / app.mazeW));
+        app.hasStart = true;
+        app.finish = app.start;
         app.hasFinish = true;
+        return;
     }
+
+    // Start at the end nearer the outside, finish at the one buried deepest,
+    // which on a labyrinth is the entrance and the centre.
+    auto edgeDistance = [&](int i)
+    {
+        int x = i % app.mazeW;
+        int y = i / app.mazeW;
+        return std::min(std::min(x, app.mazeW - 1 - x), std::min(y, app.mazeH - 1 - y));
+    };
+
+    int startIdx = a;
+    int finishIdx = b;
+    if (edgeDistance(b) < edgeDistance(a))
+    {
+        startIdx = b;
+        finishIdx = a;
+    }
+
+    app.start = Vec2(static_cast<float>(startIdx % app.mazeW), static_cast<float>(startIdx / app.mazeW));
+    app.hasStart = true;
+    app.finish = Vec2(static_cast<float>(finishIdx % app.mazeW), static_cast<float>(finishIdx / app.mazeW));
+    app.hasFinish = true;
+
+    std::cout << "Route: start (" << static_cast<int>(app.start.x) << "," << static_cast<int>(app.start.y)
+              << ") to finish (" << static_cast<int>(app.finish.x) << "," << static_cast<int>(app.finish.y)
+              << "), " << dist[finishIdx] << " cells apart along the maze.\n";
 }
 
 static void ensureValidMarkers()
@@ -963,6 +1315,27 @@ static void blurHeightmap()
     ensureValidMarkers();
 }
 
+// Bright means wall, so a heightmap of a maze is mostly dark with bright walls
+// on it. A drawing of a maze is the opposite: dark ink lines on light paper.
+// Loaded literally, a drawing comes out solid with the corridors cut into it.
+// Whichever reading leaves the walkable area in the majority is the intended
+// one, and the built-in demo maze (dark floor, bright walls) already satisfies
+// that, so this only flips line art. 'I' still overrides it in the preview.
+static bool wallsAreTheDarkMinority()
+{
+    if (app.height.empty())
+        return false;
+
+    size_t bright = 0;
+    for (uint8_t v : app.height)
+    {
+        if (static_cast<float>(v) / 255.0f > app.walkLimit01)
+            ++bright;
+    }
+
+    return bright * 2 > app.height.size();
+}
+
 static bool loadMazeFromFile(const std::string& path)
 {
     int w = 0, h = 0;
@@ -974,8 +1347,15 @@ static bool loadMazeFromFile(const std::string& path)
     app.mazeW = w;
     app.mazeH = h;
     app.height = std::move(hm);
+    app.invert = wallsAreTheDarkMinority();
+
+    std::cout << "Loaded " << path << ": " << w << "x" << h << " cells, reading "
+              << (app.invert ? "dark pixels as walls (line art)"
+                             : "bright pixels as walls (heightmap)")
+              << ". Press I in the preview to flip.\n";
 
     uploadHeightTexture();
+    sealOutsideMaze();
     rebuildTerrainMesh();
     findDefaultStartFinish();
     return true;
@@ -1242,6 +1622,15 @@ static void updateHover(double mouseX, double mouseY)
 static float sampleHeight01(float x, float z)
 {
     if (app.mazeW <= 0 || app.mazeH <= 0 || app.height.empty())
+        return 1.0f;
+
+    // Off the grid is wall, not "whatever the edge cell happens to be". The
+    // clamp below used to extend the border cells outwards for ever, so a maze
+    // whose paper reached the image edge let you walk off the map and keep
+    // going.
+    if (x < 0.0f || z < 0.0f ||
+        x > static_cast<float>(app.mazeW) * app.cellSize ||
+        z > static_cast<float>(app.mazeH) * app.cellSize)
         return 1.0f;
 
     float u = x / app.cellSize - 0.5f;
@@ -1889,8 +2278,19 @@ int main(int argc, char** argv)
     if (argc > 4)
         cliWalkLimit01 = clampf(static_cast<float>(std::atof(argv[4])), 0.02f, 1.0f);
 
+    if (argc > 5)
+        app.sealRadius = std::atoi(argv[5]);
+
     if (!init())
         return 1;
+
+    // Before loading, not after: both the light/dark reading and the start and
+    // finish search depend on walkLimit01, and picking them against the default
+    // and then changing it underneath gave markers the maze no longer agreed
+    // with.
+    app.cellSize = cliCellSize;
+    app.heightScale = cliHeightScale;
+    app.walkLimit01 = cliWalkLimit01;
 
     bool loaded = false;
     if (!mazePath.empty())
@@ -1904,10 +2304,6 @@ int main(int argc, char** argv)
     {
         generateDefaultCircularHeightmap();
     }
-
-    app.cellSize = cliCellSize;
-    app.heightScale = cliHeightScale;
-    app.walkLimit01 = cliWalkLimit01;
 
     rebuildTerrainMesh();
     ensureValidMarkers();
